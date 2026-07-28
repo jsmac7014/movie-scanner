@@ -8,13 +8,18 @@ import { daysAgoKstCompact, kstMidnight } from "../crawler/dates";
 import { fetchWithRetry } from "./fetchWithRetry";
 import { memoizeTTL } from "./memoizeTTL";
 
-const KOFIC_KEY = requireEnv("KOFIC_KEY");
-const TMDB_KEY = requireEnv("TMDB_KEY");
-
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`환경변수 ${name}가 설정되어 있지 않습니다.`);
   return value;
+}
+
+// 모듈 로드 시가 아닌 실제 사용 시점에 평가 (빌드 환경에 환경변수가 없어도 OK)
+function getKoficKey(): string {
+  return process.env.KOFIC_KEY || requireEnv("KOFIC_KEY");
+}
+function getTmdbKey(): string {
+  return process.env.TMDB_KEY || requireEnv("TMDB_KEY");
 }
 const TMDB_IMG_BASE = "https://image.tmdb.org/t/p/w300";
 const TMDB_BACKDROP_BASE = "https://image.tmdb.org/t/p/original";
@@ -86,7 +91,7 @@ function normalizeDate(openDt: string): string {
 
 /** 일별 박스오피스에서 상영중 영화 목록 조회 */
 async function fetchDailyBoxOffice(targetDate: string): Promise<KoficDailyItem[]> {
-  const url = `https://www.kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json?key=${KOFIC_KEY}&targetDt=${targetDate}`;
+  const url = `https://www.kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json?key=${getKoficKey()}&targetDt=${targetDate}`;
   const res = await fetchWithRetry(url, {}, { timeoutMs: 8000, retries: 2 });
   const data = await res.json();
   return data?.boxOfficeResult?.dailyBoxOfficeList || [];
@@ -94,7 +99,7 @@ async function fetchDailyBoxOffice(targetDate: string): Promise<KoficDailyItem[]
 
 /** 영화 상세정보 조회 (관람등급, 런타임, 장르) */
 async function fetchMovieDetail(movieCd: string): Promise<KoficMovieInfo | null> {
-  const url = `https://www.kobis.or.kr/kobisopenapi/webservice/rest/movie/searchMovieInfo.json?key=${KOFIC_KEY}&movieCd=${movieCd}`;
+  const url = `https://www.kobis.or.kr/kobisopenapi/webservice/rest/movie/searchMovieInfo.json?key=${getKoficKey()}&movieCd=${movieCd}`;
   try {
     const res = await fetchWithRetry(url, {}, { timeoutMs: 8000, retries: 1 });
     const data = await res.json();
@@ -138,7 +143,7 @@ async function fetchTmdbInfo(movieNm: string, movieNmEn?: string, openDt?: strin
   const empty: TmdbInfo = {};
   try {
     const params = new URLSearchParams({
-      api_key: TMDB_KEY,
+      api_key: getTmdbKey(),
       query: movieNm,
       language: "ko-KR",
       region: "KR",
@@ -163,7 +168,7 @@ async function fetchTmdbInfo(movieNm: string, movieNmEn?: string, openDt?: strin
 
     if (!best && movieNmEn) {
       const paramsEn = new URLSearchParams({
-        api_key: TMDB_KEY,
+        api_key: getTmdbKey(),
         query: movieNmEn,
         language: "en-US",
       });
@@ -256,7 +261,7 @@ export async function getBoxOfficeMovies(): Promise<BoxOfficeMovie[]> {
 /** 개봉 예정작 조회 (KOFIC 영화목록 API에서 개봉예정 필터) */
 export async function getUpcomingMovies(): Promise<BoxOfficeMovie[]> {
   try {
-    const url = `https://www.kobis.or.kr/kobisopenapi/webservice/rest/movie/searchMovieList.json?key=${KOFIC_KEY}&openStartDt=${new Date().getFullYear()}&itemPerPage=100`;
+    const url = `https://www.kobis.or.kr/kobisopenapi/webservice/rest/movie/searchMovieList.json?key=${getKoficKey()}&openStartDt=${new Date().getFullYear()}&itemPerPage=100`;
     const res = await fetchWithRetry(url, {}, { timeoutMs: 8000, retries: 2 });
     const data = await res.json();
     const items = data?.movieListResult?.movieList || [];
