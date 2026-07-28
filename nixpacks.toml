@@ -1,0 +1,13 @@
+# Next.js + Playwright on Railway.
+# Chromium 브라우저 바이너리는 `npx playwright install chromium --with-deps`로 설치.
+[phases.setup]
+nixPkgs = ["nodejs", "ffmpeg", "chromium", "nss", "atk", "at-spi2-atk", "cups", "drm", "mesa", "xkb", "alsa-lib", "pango", "cairo", "gbm", "gtk3", "expat"]
+
+[phases.build]
+cmds = [
+  "npm run build",
+  "npx playwright install chromium"
+]
+
+[start]
+cmd = "npm run start"
