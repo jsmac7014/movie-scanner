@@ -67,8 +67,9 @@ export function todayIso(): string {
 
 export function dateLabel(d: string): string {
   if (!d) return "";
-  const date = new Date(kstMidnight(d));
-  return `${date.getUTCMonth() + 1}월 ${date.getUTCDate()}일`;
+  const [y, m, day] = d.split("-");
+  if (!y || !m || !day) return "";
+  return `${parseInt(m, 10)}월 ${parseInt(day, 10)}일`;
 }
 
 export function isUpcoming(releaseDate?: string): boolean {

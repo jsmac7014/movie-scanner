@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Section } from "@astryxdesign/core/Section";
 import { VStack, HStack } from "@astryxdesign/core/Stack";
 import { StackItem } from "@astryxdesign/core/Stack";
-import { Grid } from "@astryxdesign/core/Grid";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Text } from "@astryxdesign/core/Text";
 import { Selector } from "@astryxdesign/core/Selector";
@@ -16,12 +15,11 @@ import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Card } from "@astryxdesign/core/Card";
 import { Button } from "@astryxdesign/core/Button";
-import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { SegmentedControl } from "@astryxdesign/core/SegmentedControl";
 import { SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { AppFrame } from "../../components/AppFrame";
-import { ShowtimeGrid } from "../../components/Showtime";
+import { ShowtimeGrid, TimeChips, ShowtimeHeatmap } from "../../components/Showtime";
 import type { TheaterChain } from "../../lib/types";
 import {
   type ApiMovie,
@@ -51,6 +49,7 @@ export function ShowtimesClient({ movie }: { movie: ApiMovie }) {
   const [crawledAt, setCrawledAt] = useState<string | null>(null);
   const [screenFilter, setScreenFilter] = useState<string>("ALL");
   const [sortMode, setSortMode] = useState<string>("time");
+  const [viewMode, setViewMode] = useState<string>("detail");
 
   useEffect(() => {
     fetch("/api/regions")
@@ -308,9 +307,29 @@ export function ShowtimesClient({ movie }: { movie: ApiMovie }) {
 
             <HStack gap={2} align="center" justify="between" wrap="wrap">
               <Text type="supporting">
-                영화관을 비교한 뒤 원하는 곳만 펼쳐 상세 회차를 확인하세요.
+                {viewMode === "detail"
+                  ? "영화관을 비교한 뒤 원하는 곳만 펼쳐 상세 회차를 확인하세요."
+                  : "색상으로 좌석 상태를 한눈에 확인하세요. 마우스를 올리면 상세 정보가 표시됩니다."}
               </Text>
-              <HStack isScrollable maxWidth="100%">
+              <HStack gap={2} align="center" wrap="wrap">
+                <SegmentedControl
+                  value={viewMode}
+                  onChange={setViewMode}
+                  label="보기 모드"
+                  size="sm"
+                  style={{ flexShrink: 0 }}
+                >
+                  <SegmentedControlItem
+                    value="detail"
+                    label="상세"
+                    style={{ whiteSpace: "nowrap" }}
+                  />
+                  <SegmentedControlItem
+                    value="simple"
+                    label="심플"
+                    style={{ whiteSpace: "nowrap" }}
+                  />
+                </SegmentedControl>
                 <SegmentedControl
                   value={sortMode}
                   onChange={setSortMode}
@@ -342,57 +361,75 @@ export function ShowtimesClient({ movie }: { movie: ApiMovie }) {
                 title={`${SCREEN_CATEGORIES.find((c) => c.key === screenFilter)?.label || ""} 상영이 없습니다`}
                 description="이 스크린 타입으로 상영하는 회차가 없어요. 다른 타입을 선택해 보세요."
               />
+            ) : viewMode === "simple" ? (
+              <Card padding={4}>
+                <ShowtimeHeatmap groups={groupedByTheater} />
+              </Card>
             ) : (
-              groupedByTheater.map((group, index) => (
-                <Card key={`${group.chain}-${group.name}`} padding={2}>
-                  <Collapsible
-                    defaultIsOpen={index === 0}
-                    trigger={
-                      <StackItem size="fill">
-                        <VStack gap={3} padding={2} width="100%">
-                            <HStack gap={2} align="center" width="100%">
-                              <Badge variant={chainColor[group.chain]} label={group.chain} />
+              <div
+                style={{
+                  display: "flex",
+                  gap: "var(--spacing-3)",
+                  flexWrap: "wrap",
+                }}
+              >
+                {(() => {
+                  const count = groupedByTheater.length;
+                  const perCol = Math.ceil(count / 3);
+                  const cols = [
+                    groupedByTheater.slice(0, perCol),
+                    groupedByTheater.slice(perCol, perCol * 2),
+                    groupedByTheater.slice(perCol * 2),
+                  ];
+                  return cols.map((col, colIdx) => (
+                    <div
+                      key={colIdx}
+                      style={{
+                        flex: "1 1 300px",
+                        minWidth: "300px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "var(--spacing-3)",
+                      }}
+                    >
+                      {col.map((group, index) => (
+                        <Card key={`${group.chain}-${group.name}`} padding={0}>
+                          <Collapsible
+                            defaultIsOpen={index === 0 && colIdx === 0}
+                            trigger={
                               <StackItem size="fill">
-                                <Heading level={3} maxLines={2} wordBreak="break-word" textWrap="pretty">
-                                  {group.name}
-                                </Heading>
+                                <VStack gap={2} padding={3} width="100%">
+                                  <HStack gap={2} align="center" width="100%">
+                                    <Badge variant={chainColor[group.chain]} label={group.chain} />
+                                    <StackItem size="fill">
+                                      <Heading level={3} maxLines={1} wordBreak="break-word">
+                                        {group.name}
+                                      </Heading>
+                                    </StackItem>
+                                    <HStack gap={3} align="center">
+                                      <Text type="supporting" size="xsm" textWrap="nowrap" hasTabularNumbers>
+                                        {group.shows.length}회
+                                      </Text>
+                                      <Text weight="semibold" size="xsm" textWrap="nowrap" hasTabularNumbers>
+                                        최대 {group.maxRemaining}석
+                                      </Text>
+                                    </HStack>
+                                  </HStack>
+                                  <TimeChips shows={group.shows} maxChips={10} />
+                                </VStack>
                               </StackItem>
-                            </HStack>
-                            <HStack gap={1} align="center" wrap="wrap">
-                              {group.screenTypes.slice(0, 3).map((type) => (
-                                <Badge key={type} variant="gray" label={type} />
-                              ))}
-                            </HStack>
-                            <HStack gap={3} align="center" justify="between" width="100%">
-                              <VStack gap={0.5} align="start">
-                                <Text type="supporting" textWrap="nowrap">첫 상영</Text>
-                                <Text weight="semibold" textWrap="nowrap" hasTabularNumbers>
-                                  {group.firstTime}
-                                </Text>
-                              </VStack>
-                              <VStack gap={0.5} align="center">
-                                <Text type="supporting" textWrap="nowrap">회차</Text>
-                                <Text weight="semibold" textWrap="nowrap" hasTabularNumbers>
-                                  {group.shows.length}회
-                                </Text>
-                              </VStack>
-                              <VStack gap={0.5} align="end">
-                                <Text type="supporting" textWrap="nowrap">최대 잔여</Text>
-                                <Text weight="semibold" textWrap="nowrap" hasTabularNumbers>
-                                  {group.maxRemaining}석
-                                </Text>
-                              </VStack>
-                            </HStack>
-                        </VStack>
-                      </StackItem>
-                    }
-                  >
-                    <VStack gap={3} padding={2}>
-                      <ShowtimeGrid shows={group.shows} />
-                    </VStack>
-                  </Collapsible>
-                </Card>
-              ))
+                            }
+                          >
+                            <VStack gap={2} padding={3}>
+                              <ShowtimeGrid shows={group.shows} />
+                            </VStack>
+                          </Collapsible>
+                        </Card>
+                      ))}
+                    </div>
+                  ));
+                })()}
+              </div>
             )}
           </VStack>
         )}
