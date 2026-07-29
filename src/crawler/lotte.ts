@@ -220,7 +220,7 @@ export async function crawlLotte(
           startTime: (s.StartTime || "").slice(0, 5),
           endTime: (s.EndTime || "").slice(0, 5),
           totalSeats: s.TotalSeatCount || 0,
-          remainingSeats: (s.TotalSeatCount || 0) - (s.BookingSeatCount || 0),
+          remainingSeats: s.BookingSeatCount || 0,
         }));
       } catch (error) {
         console.error(
