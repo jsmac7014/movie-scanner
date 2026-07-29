@@ -54,7 +54,14 @@ export async function GET() {
       })),
     ];
 
-    return NextResponse.json({ movies, count: movies.length });
+    return NextResponse.json(
+      { movies, count: movies.length },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+        },
+      },
+    );
   } catch (e) {
     return NextResponse.json(
       {

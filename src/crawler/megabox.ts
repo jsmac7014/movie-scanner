@@ -80,7 +80,7 @@ async function fetchMegaData(brchNo: string, playDe: string): Promise<MegaRespon
       Referer: "https://www.megabox.co.kr/booking",
     },
     body: form.toString(),
-  }, { timeoutMs: 10_000, retries: 2 });
+  }, { timeoutMs: 10_000, retries: 1, baseDelayMs: 1500 });
   if (!res.ok) throw new Error(`Megabox HTTP ${res.status}`);
   return await res.json() as MegaResponse;
 }

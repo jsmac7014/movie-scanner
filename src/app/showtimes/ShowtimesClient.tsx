@@ -57,10 +57,28 @@ export function ShowtimesClient({ movie }: { movie: ApiMovie }) {
   const isTablet = useMediaQuery("(max-width: 900px)");
 
   useEffect(() => {
+    // sessionStorage 캐싱: 극장 목록은 거의 안 바뀌므로 30분 캐싱
+    const CACHE_KEY = "movie-scanner:regions";
+    const CACHE_TTL = 30 * 60 * 1000;
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const { ts, regions: cachedRegions } = JSON.parse(cached);
+        if (Date.now() - ts < CACHE_TTL) {
+          setRegions(cachedRegions);
+          return;
+        }
+      }
+    } catch {}
+
     fetch("/api/regions")
       .then((r) => r.json())
       .then((d) => {
-        setRegions(d.regions || []);
+        const regions = d.regions || [];
+        setRegions(regions);
+        try {
+          sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), regions }));
+        } catch {}
       })
       .catch(() => {});
   }, []);
@@ -119,8 +137,8 @@ export function ShowtimesClient({ movie }: { movie: ApiMovie }) {
     return () => window.clearInterval(timer);
   }, [crawledAt]);
 
-  // 자동 갱신: 5분 경과 시 refetch (결과가 있을 때만)
-  const STALE_THRESHOLD = 5 * 60;
+  // 자동 갱신: 10분 경과 시 refetch (결과가 있을 때만)
+  const STALE_THRESHOLD = 10 * 60;
 
   useEffect(() => {
     if (!searched || loading || showtimes.length === 0) return;

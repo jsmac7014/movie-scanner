@@ -27,9 +27,30 @@ export default function HomePage() {
   const isMobile = useMediaQuery("(max-width: 640px)");
 
   useEffect(() => {
+    // sessionStorage 캐싱: 5분 내 재방문 시 API 호출 스킵
+    const CACHE_KEY = "movie-scanner:movies";
+    const CACHE_TTL = 5 * 60 * 1000;
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const { ts, movies: cachedMovies } = JSON.parse(cached);
+        if (Date.now() - ts < CACHE_TTL) {
+          setMovies(cachedMovies);
+          setLoading(false);
+          return;
+        }
+      }
+    } catch {}
+
     fetch("/api/movies")
       .then((r) => r.json())
-      .then((d) => setMovies(d.movies || []))
+      .then((d) => {
+        const movies = d.movies || [];
+        setMovies(movies);
+        try {
+          sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), movies }));
+        } catch {}
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

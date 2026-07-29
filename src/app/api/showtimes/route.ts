@@ -103,12 +103,19 @@ export async function GET(req: Request) {
   }
   const movies = [...movieSet.entries()].map(([id, title]) => ({ id, title }));
 
-  return NextResponse.json({
-    region: regionId,
-    theaterCount: targets.length,
-    movieCount: movies.length,
-    movies,
-    showtimes,
-    crawledAt: new Date().toISOString(),
-  });
+  return NextResponse.json(
+    {
+      region: regionId,
+      theaterCount: targets.length,
+      movieCount: movies.length,
+      movies,
+      showtimes,
+      crawledAt: new Date().toISOString(),
+    },
+    {
+      headers: {
+        "Cache-Control": "private, max-age=300, stale-while-revalidate=600",
+      },
+    },
+  );
 }

@@ -6,13 +6,20 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const theaters = await getAllTheaters();
-  return NextResponse.json({
-    regions,
-    theatersByRegion: Object.fromEntries(
-      regions.map((region) => [
-        region.id,
-        theaters.filter((theater) => theater.regionId === region.id),
-      ]),
-    ),
-  });
+  return NextResponse.json(
+    {
+      regions,
+      theatersByRegion: Object.fromEntries(
+        regions.map((region) => [
+          region.id,
+          theaters.filter((theater) => theater.regionId === region.id),
+        ]),
+      ),
+    },
+    {
+      headers: {
+        "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=7200",
+      },
+    },
+  );
 }

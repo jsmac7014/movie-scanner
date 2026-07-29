@@ -115,7 +115,7 @@ async function resolveMovieCd(title: string): Promise<string | null> {
   return cd;
 }
 
-const NOW_PLAYING_TTL = 60 * 60 * 1000;
+const NOW_PLAYING_TTL = 30 * 60 * 1000;
 const NOW_PLAYING_KEY = "nowplaying:all";
 
 export interface NowPlayingMovie {
