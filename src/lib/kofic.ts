@@ -341,3 +341,52 @@ export async function getUpcomingMovies(): Promise<BoxOfficeMovie[]> {
     return [];
   }
 }
+
+/**
+ * 메가박스 실제 상영목록 중 KOFIC에 없는 영화를 보완.
+ * KOFIC 박스오피스가 하루 늦게 발표되거나 신작이 미등록인 경우,
+ * 실제 극장에서 상영 중인 영화를 누락 보완한다.
+ * koficMovies: 박스오피스 + upcoming 합쳐서 비교 기준.
+ */
+export async function getMegaSupplementMovies(
+  koficMovies: BoxOfficeMovie[],
+): Promise<BoxOfficeMovie[]> {
+  try {
+    const megaMovies = await getMegaMovies();
+    const knownTitles = new Set(
+      koficMovies.map((m) => normalizeTitleForMatch(m.movieNm)),
+    );
+
+    // KOFIC에 없는 메가박스 상영작만 추출
+    const missing = megaMovies.filter(
+      (m) => !knownTitles.has(normalizeTitleForMatch(m.title)),
+    );
+    if (missing.length === 0) return [];
+
+    const result: BoxOfficeMovie[] = missing.map((m) => ({
+      movieCd: `mega-${m.id}`,
+      movieNm: m.title,
+      rank: 999,
+      openDt: "",
+      audiAcc: 0,
+      scrnCnt: 0,
+      showCnt: 0,
+      rating: m.rating,
+    }));
+
+    // TMDB 포스터 + 백드롭 보완
+    const tmdbPromises = result.map((m) =>
+      fetchTmdbInfo(m.movieNm, undefined, undefined),
+    );
+    const tmdbResults = await Promise.all(tmdbPromises);
+    result.forEach((m, i) => {
+      m.posterUrl = tmdbResults[i].posterUrl;
+      m.backdropUrl = tmdbResults[i].backdropUrl;
+      m.overview = tmdbResults[i].overview;
+    });
+
+    return result;
+  } catch {
+    return [];
+  }
+}

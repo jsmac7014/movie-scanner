@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getBoxOfficeMovies, getUpcomingMovies } from "../../../lib/kofic";
+import { getBoxOfficeMovies, getUpcomingMovies, getMegaSupplementMovies } from "../../../lib/kofic";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,9 +30,7 @@ export async function GET() {
         ),
       }));
     const boxOfficeIds = new Set(boxOfficeMovies.map((movie) => movie.id));
-    const movies = [
-      ...boxOfficeMovies,
-      ...upcoming.filter((m) => !boxOfficeIds.has(m.movieCd)).map((m) => ({
+    const upcomingMovies = upcoming.filter((m) => !boxOfficeIds.has(m.movieCd)).map((m) => ({
         id: m.movieCd,
         title: m.movieNm,
         posterUrl: m.posterUrl,
@@ -47,8 +45,27 @@ export async function GET() {
         isUpcoming: Boolean(
           m.openDt && new Date(`${m.openDt}T00:00:00+09:00`).getTime() > Date.now(),
         ),
-      })),
-    ];
+      }));
+
+    // 메가박스 실제 상영목록으로 KOFIC 누락작 보완
+    const allKofic = [...boxOffice, ...upcoming];
+    const megaSupplement = await getMegaSupplementMovies(allKofic);
+    const supplementMovies = megaSupplement.map((m) => ({
+      id: m.movieCd,
+      title: m.movieNm,
+      posterUrl: m.posterUrl,
+      backdropUrl: m.backdropUrl,
+      overview: m.overview,
+      rating: m.rating,
+      releaseDate: m.openDt || undefined,
+      rank: m.rank,
+      runtimeMin: m.runtimeMin,
+      genres: m.genres,
+      audiAcc: m.audiAcc,
+      isUpcoming: false,
+    }));
+
+    const movies = [...boxOfficeMovies, ...upcomingMovies, ...supplementMovies];
 
     return NextResponse.json({ movies, count: movies.length });
   } catch (e) {
