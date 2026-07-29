@@ -18,6 +18,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { SegmentedControl } from "@astryxdesign/core/SegmentedControl";
 import { SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import { AppFrame } from "../../components/AppFrame";
 import { ShowtimeGrid, TimeChips, ShowtimeHeatmap } from "../../components/Showtime";
 import type { TheaterChain } from "../../lib/types";
@@ -50,6 +51,10 @@ export function ShowtimesClient({ movie }: { movie: ApiMovie }) {
   const [screenFilter, setScreenFilter] = useState<string>("ALL");
   const [sortMode, setSortMode] = useState<string>("time");
   const [viewMode, setViewMode] = useState<string>("detail");
+  const [chainFilter, setChainFilter] = useState<string>("");
+
+  const isMobile = useMediaQuery("(max-width: 640px)");
+  const isTablet = useMediaQuery("(max-width: 900px)");
 
   useEffect(() => {
     fetch("/api/regions")
@@ -65,19 +70,21 @@ export function ShowtimesClient({ movie }: { movie: ApiMovie }) {
     setShowtimes([]);
     setError(null);
     setSearched(false);
+    setChainFilter("");
   };
 
   const canSearch = Boolean(movie.title && regionId);
 
-  const doSearch = useCallback(async () => {
+  const doSearch = useCallback(async (isRefresh = false) => {
     if (!movie.title || !regionId) return;
     setLoading(true);
     setError(null);
     setSearched(true);
-    setScreenFilter("ALL");
+    if (!isRefresh) setScreenFilter("ALL");
     try {
       const params = new URLSearchParams({ region: regionId, movie: movie.title });
       if (date) params.set("date", date);
+      if (chainFilter) params.set("chain", chainFilter);
       const res = await fetch(`/api/showtimes?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) {
@@ -93,7 +100,42 @@ export function ShowtimesClient({ movie }: { movie: ApiMovie }) {
     } finally {
       setLoading(false);
     }
-  }, [movie.title, regionId, date]);
+  }, [movie.title, regionId, date, chainFilter]);
+
+  // 크롤링 신선도: 경과 시간 추적
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  useEffect(() => {
+    if (!crawledAt) {
+      setElapsedSec(0);
+      return;
+    }
+    const update = () => {
+      const diff = Math.floor((Date.now() - new Date(crawledAt).getTime()) / 1000);
+      setElapsedSec(diff);
+    };
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [crawledAt]);
+
+  // 자동 갱신: 5분 경과 시 refetch (결과가 있을 때만)
+  const STALE_THRESHOLD = 5 * 60;
+
+  useEffect(() => {
+    if (!searched || loading || showtimes.length === 0) return;
+    if (elapsedSec < STALE_THRESHOLD) return;
+    void doSearch(true);
+  }, [elapsedSec, searched, loading, showtimes.length, doSearch]);
+
+  const elapsedLabel = useMemo(() => {
+    if (elapsedSec < 60) return `${elapsedSec}초 전`;
+    const min = Math.floor(elapsedSec / 60);
+    const sec = elapsedSec % 60;
+    return `${min}분 ${sec}초 전`;
+  }, [elapsedSec]);
+
+  const isStale = elapsedSec >= STALE_THRESHOLD;
 
   const filtered = useMemo(() => {
     const list = movie.title
@@ -178,10 +220,10 @@ export function ShowtimesClient({ movie }: { movie: ApiMovie }) {
             pointerEvents: "none",
           }}
         />
-        <VStack gap={4} padding={6} style={{ position: "relative", zIndex: 1 }}>
+        <VStack gap={isMobile ? 3 : 4} padding={isMobile ? 3 : 6} style={{ position: "relative", zIndex: 1 }}>
           <VStack gap={2} align="start" maxWidth={600}>
             <HStack gap={2} align="center" wrap="wrap">
-              <Heading level={1} type="display-1" color="inherit" textWrap="balance">
+              <Heading level={1} type={isMobile ? "display-2" : "display-1"} color="inherit" textWrap="balance">
                 {movie.title}
               </Heading>
               {isUpcoming(movie.releaseDate) && (
@@ -231,13 +273,27 @@ export function ShowtimesClient({ movie }: { movie: ApiMovie }) {
                   placeholder="날짜 선택"
                 />
               </StackItem>
+              <StackItem size="fill">
+                <Selector
+                  label="영화관"
+                  placeholder="전체 영화관"
+                  value={chainFilter}
+                  onChange={(v) => setChainFilter(v ?? "")}
+                  hasClear
+                  options={[
+                    { value: "CGV", label: "CGV" },
+                    { value: "LOTTE", label: "롯데시네마" },
+                    { value: "MEGABOX", label: "메가박스" },
+                  ]}
+                />
+              </StackItem>
               <StackItem>
                 <Button
                   variant="primary"
                   size="lg"
                   isDisabled={!canSearch || loading}
                   isLoading={loading}
-                  onClick={doSearch}
+                  onClick={() => doSearch()}
                   label="검색"
                 />
               </StackItem>
@@ -256,7 +312,7 @@ export function ShowtimesClient({ movie }: { movie: ApiMovie }) {
           />
         ) : error ? (
           <Banner status="error" title="데이터 불러오기 실패" description={error}>
-            <Button variant="secondary" onClick={doSearch} label="재시도" />
+            <Button variant="secondary" onClick={() => doSearch()} label="재시도" />
           </Banner>
         ) : loading ? (
           <VStack gap={4} align="center">
@@ -278,9 +334,22 @@ export function ShowtimesClient({ movie }: { movie: ApiMovie }) {
                 <Badge label={`${filtered.length}회차`} />
               </HStack>
               {crawledAt && (
-                <Text type="supporting">
-                  업데이트 {new Date(crawledAt).toLocaleTimeString("ko-KR")}
-                </Text>
+                <HStack gap={2} align="center">
+                  <Text
+                    type="supporting"
+                    size={isMobile ? "xsm" : "sm"}
+                    style={isStale ? { color: "var(--color-warning)" } : undefined}
+                  >
+                    {isStale ? "데이터 갱신 중..." : `업데이트 ${elapsedLabel}`}
+                  </Text>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    label={loading ? "새로고침 중" : "새로고침"}
+                    isDisabled={loading}
+                    onClick={() => doSearch(true)}
+                  />
+                </HStack>
               )}
             </HStack>
 
@@ -375,18 +444,18 @@ export function ShowtimesClient({ movie }: { movie: ApiMovie }) {
               >
                 {(() => {
                   const count = groupedByTheater.length;
-                  const perCol = Math.ceil(count / 3);
-                  const cols = [
-                    groupedByTheater.slice(0, perCol),
-                    groupedByTheater.slice(perCol, perCol * 2),
-                    groupedByTheater.slice(perCol * 2),
-                  ];
+                  const numCols = isMobile ? 1 : isTablet ? 2 : 3;
+                  const perCol = Math.ceil(count / numCols);
+                  const cols = Array.from({ length: numCols }, (_, i) =>
+                    groupedByTheater.slice(i * perCol, (i + 1) * perCol),
+                  );
+                  const minWidth = isMobile ? "100%" : isTablet ? "calc(50% - var(--spacing-3))" : "300px";
                   return cols.map((col, colIdx) => (
                     <div
                       key={colIdx}
                       style={{
-                        flex: "1 1 300px",
-                        minWidth: "300px",
+                        flex: isMobile ? "1 1 100%" : "1 1 300px",
+                        minWidth,
                         display: "flex",
                         flexDirection: "column",
                         gap: "var(--spacing-3)",

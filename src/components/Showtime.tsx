@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { VStack, HStack } from "@astryxdesign/core/Stack";
 import { Grid } from "@astryxdesign/core/Grid";
 import { Text } from "@astryxdesign/core/Text";
@@ -8,6 +8,7 @@ import { Token } from "@astryxdesign/core/Token";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Badge } from "@astryxdesign/core/Badge";
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import type { ApiMovie, ApiShowtime } from "../lib/ui";
 import { isUpcoming, seatStatus, seatBarColor } from "../lib/ui";
 import type { TheaterChain } from "../lib/types";
@@ -204,8 +205,6 @@ export function ShowtimeHeatmap({ groups }: { groups: HeatmapGroup[] }) {
   // 30분 단위 슬롯
   const slotSize = 30;
   // startMin을 슬롯 단위로 내림 정렬.
-  // 그렇지 않으면 startMin이 08:50(530분)일 때 슬롯이 530,560,590...이 되어
-  // 09:00(540) 같은 정시가 슬롯 경계에 안 걸려 시간 라벨이 누락된다.
   const startMin = Math.floor(rawStartMin / slotSize) * slotSize;
   // endMin은 올림하여 마지막 회차가 잘리지 않도록.
   const endMin = Math.ceil((rawEndMin + 1) / slotSize) * slotSize;
@@ -221,9 +220,11 @@ export function ShowtimeHeatmap({ groups }: { groups: HeatmapGroup[] }) {
     }
   }
 
-  const cellSize = 18;
-  const labelWidth = 140;
-  const headerHeight = 22;
+  // 반응형: 모바일은 셀/라벨 축소
+  const isMobile = useMediaQuery("(max-width: 640px)");
+  const cellSize = isMobile ? 12 : 18;
+  const labelWidth = isMobile ? 92 : 140;
+  const headerHeight = isMobile ? 18 : 22;
   const gap = 2;
 
   return (
@@ -247,7 +248,11 @@ export function ShowtimeHeatmap({ groups }: { groups: HeatmapGroup[] }) {
         </HStack>
       </HStack>
 
-      <div style={{ overflowX: "auto", width: "100%" }}>
+      {isMobile && (
+        <Text type="supporting" size="xsm">← 좌우로 스크롤하여 시간대를 확인하세요 →</Text>
+      )}
+
+      <div style={{ overflowX: "auto", width: "100%", WebkitOverflowScrolling: "touch" }}>
         <div style={{ minWidth: labelWidth + totalSlots * (cellSize + gap) }}>
           {/* 시간 헤더 */}
           <div
@@ -437,14 +442,31 @@ const HeatmapRow = memo(function HeatmapRow({
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = "scale(1.4)";
                 e.currentTarget.style.boxShadow = "var(--shadow-1)";
-                const tip = (e.currentTarget.previousElementSibling as HTMLElement);
+                const tip = e.currentTarget.previousElementSibling as HTMLElement;
                 if (tip) tip.style.opacity = "1";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = "scale(1)";
                 e.currentTarget.style.boxShadow = "none";
-                const tip = (e.currentTarget.previousElementSibling as HTMLElement);
+                const tip = e.currentTarget.previousElementSibling as HTMLElement;
                 if (tip) tip.style.opacity = "0";
+              }}
+              onClick={(e) => {
+                // 모바일 터치: 토글. 다른 셀 툴팁은 끄기.
+                const allTips = e.currentTarget
+                  .closest(".heatmap-cell")
+                  ?.parentElement
+                  ?.querySelectorAll(".heatmap-tooltip");
+                allTips?.forEach((t) => {
+                  if (t !== e.currentTarget.previousElementSibling) {
+                    (t as HTMLElement).style.opacity = "0";
+                  }
+                });
+                const tip = e.currentTarget.previousElementSibling as HTMLElement;
+                if (tip) {
+                  const isShown = tip.style.opacity === "1";
+                  tip.style.opacity = isShown ? "0" : "1";
+                }
               }}
             />
           </span>

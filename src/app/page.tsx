@@ -24,6 +24,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [heroIndex, setHeroIndex] = useState(0);
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const isMobile = useMediaQuery("(max-width: 640px)");
 
   useEffect(() => {
     fetch("/api/movies")
@@ -89,6 +90,7 @@ export default function HomePage() {
               movie={movie}
               isActive={index === heroIndex}
               prefersReducedMotion={prefersReducedMotion}
+              isMobile={isMobile}
               onSelect={() => handleSelect(movie)}
             />
           ))}
@@ -96,7 +98,7 @@ export default function HomePage() {
       )}
 
       {/* 캐러셀 행들 */}
-      <VStack gap={6} padding={6} style={{ background: "var(--color-background-body)" }}>
+      <VStack gap={isMobile ? 4 : 6} padding={isMobile ? 3 : 6} style={{ background: "var(--color-background-body)" }}>
         {top10.length > 0 && (
           <CarouselRow title="박스오피스 Top 10" movies={top10} onSelect={handleSelect} />
         )}
@@ -115,11 +117,13 @@ function HeroBanner({
   movie,
   isActive,
   prefersReducedMotion,
+  isMobile,
   onSelect,
 }: {
   movie: ApiMovie;
   isActive: boolean;
   prefersReducedMotion: boolean;
+  isMobile: boolean;
   onSelect: () => void;
 }) {
   return (
@@ -130,14 +134,14 @@ function HeroBanner({
         position: "absolute",
         inset: 0,
         minHeight: "var(--spacing-10)",
-        height: "70vh",
+        height: isMobile ? "55vh" : "70vh",
         opacity: isActive ? 1 : 0,
         pointerEvents: isActive ? "auto" : "none",
         transition: prefersReducedMotion
           ? "none"
           : "opacity var(--duration-slow-min) var(--ease-standard)",
         background: movie.backdropUrl
-          ? `linear-gradient(to top, var(--color-background-body) 0%, transparent 50%), url(${movie.backdropUrl}) center/cover no-repeat`
+          ? `linear-gradient(to top, var(--color-background-body) 0%, transparent ${isMobile ? "70%" : "50%"}), url(${movie.backdropUrl}) center/cover no-repeat`
           : "var(--color-background-muted)",
       }}
     >
@@ -146,19 +150,21 @@ function HeroBanner({
         style={{
           position: "absolute",
           inset: "0",
-          background: "linear-gradient(to right, var(--color-background-body) 0%, transparent 60%)",
+          background: isMobile
+            ? "linear-gradient(to top, var(--color-background-body) 0%, transparent 80%)"
+            : "linear-gradient(to right, var(--color-background-body) 0%, transparent 60%)",
           pointerEvents: "none",
         }}
       />
       <VStack
-        gap={3}
+        gap={isMobile ? 2 : 3}
         align="start"
-        padding={6}
-        maxWidth={600}
+        padding={isMobile ? 3 : 6}
+        maxWidth={isMobile ? "100%" : 600}
         style={{ position: "relative", zIndex: 1 }}
       >
         {movie.rank === 1 && <Badge variant="red" label="박스오피스 1위" />}
-        <Heading level={1} type="display-1" color="inherit" textWrap="balance">
+        <Heading level={1} type={isMobile ? "display-2" : "display-1"} color="inherit" textWrap="balance">
           {movie.title}
         </Heading>
         <HStack gap={3} align="center" wrap="wrap">
