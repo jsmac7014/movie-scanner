@@ -7,6 +7,7 @@
 import { daysAgoKstCompact, kstMidnight } from "../crawler/dates";
 import { fetchWithRetry } from "./fetchWithRetry";
 import { memoizeTTL } from "./memoizeTTL";
+import { getMegaMovies } from "../crawler/megabox";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -109,6 +110,13 @@ async function fetchMovieDetail(movieCd: string): Promise<KoficMovieInfo | null>
   }
 }
 
+function normalizeTitleForMatch(title: string): string {
+  return title
+    .replace(/\[[^\]]+\]/g, "")
+    .replace(/[^0-9a-zA-Z가-힣]/g, "")
+    .toLowerCase();
+}
+
 /** 영화 코드로 상세정보와 TMDB 이미지를 조회한다. */
 export async function getMovieByCode(movieCd: string): Promise<BoxOfficeMovie | null> {
   const detail = await fetchMovieDetail(movieCd);
@@ -203,26 +211,38 @@ export async function getBoxOfficeMovies(): Promise<BoxOfficeMovie[]> {
     const dates = [1, 2, 3, 4, 5, 6, 7].map((d) => dateCompactDaysAgo(d));
     const allItems = await Promise.all(dates.map((d) => fetchDailyBoxOffice(d)));
 
-    // 중복 제거 (movieCd 기준), 최고 순위 유지
+    // 중복 제거 (movieCd 기준), 최고 순위 + 최대 스크린 수 유지
     const byCode = new Map<string, KoficDailyItem>();
+    const maxScrnByCode = new Map<string, number>();
     for (const items of allItems) {
       for (const item of items) {
-        if (!byCode.has(item.movieCd)) {
+        const prev = byCode.get(item.movieCd);
+        const scrn = parseInt(item.scrnCnt, 10) || 0;
+        if (!prev) {
           byCode.set(item.movieCd, item);
+          maxScrnByCode.set(item.movieCd, scrn);
+        } else if (scrn > (maxScrnByCode.get(item.movieCd) ?? 0)) {
+          // 더 많은 스크린 수가 관찰된 날의 데이터로 대체
+          byCode.set(item.movieCd, item);
+          maxScrnByCode.set(item.movieCd, scrn);
         }
       }
     }
 
     // 박스오피스 아이템을 BoxOfficeMovie로 변환
-    const movies: BoxOfficeMovie[] = [...byCode.values()].map((item) => ({
-      movieCd: item.movieCd,
-      movieNm: item.movieNm,
-      rank: parseInt(item.rank, 10),
-      openDt: normalizeDate(item.openDt),
-      audiAcc: parseInt(item.audiAcc, 10) || 0,
-      scrnCnt: parseInt(item.scrnCnt, 10) || 0,
-      showCnt: parseInt(item.showCnt, 10) || 0,
-    }));
+    // 실제 극장에서 상영하지 않는(스크린 수 미달) 영화 제외
+    const MIN_SCREEN_COUNT = 5;
+    const movies: BoxOfficeMovie[] = [...byCode.values()]
+      .filter((item) => (maxScrnByCode.get(item.movieCd) ?? 0) >= MIN_SCREEN_COUNT)
+      .map((item) => ({
+        movieCd: item.movieCd,
+        movieNm: item.movieNm,
+        rank: parseInt(item.rank, 10),
+        openDt: normalizeDate(item.openDt),
+        audiAcc: parseInt(item.audiAcc, 10) || 0,
+        scrnCnt: maxScrnByCode.get(item.movieCd) ?? 0,
+        showCnt: parseInt(item.showCnt, 10) || 0,
+      }));
 
     // 상세정보 + TMDB 포스터를 병렬로 보완
     const detailsPromises = movies.map((m) => fetchMovieDetail(m.movieCd));
@@ -270,13 +290,28 @@ export async function getUpcomingMovies(): Promise<BoxOfficeMovie[]> {
     const threeDaysAgo = now - 3 * 24 * 60 * 60 * 1000;
     const twoWeeksLater = now + 14 * 24 * 60 * 60 * 1000;
 
+    // 메가박스 실제 상영목록을 화이트리스트로 사용.
+    // KOFIC searchMovieList에는 에로/성인영화도 섞여 있어서,
+    // 과거 openDt를 허용하면 "현재 상영작"으로 누출된다.
+    // 메가박스에서 예매 가능한 영화만 통과시켜 실제 극장 상영 여부 검증.
+    const megaMovies = await getMegaMovies();
+    const megaTitles = new Set(
+      megaMovies.map((m) => normalizeTitleForMatch(m.title)),
+    );
+
     const upcoming: BoxOfficeMovie[] = items
-      .filter((item: { prdtStatNm?: string; openDt?: string }) => {
+      .filter((item: { prdtStatNm?: string; openDt?: string; movieNm: string }) => {
         if (!item.openDt) return false;
         const ts = kstMidnight(normalizeDate(item.openDt));
-        // 개봉예정작: 3일 전 ~ 2주 후 개봉작 포함
-        // (개봉 당일이나 익일에 박스오피스에 잡히지 않은 영화 커버)
-        return ts >= threeDaysAgo && ts <= twoWeeksLater;
+        // 범위: 3일 전 ~ 2주 후. 3일 전을 포함하는 이유는 KOFIC 일별
+        // 박스오피스가 하루 늦게 발표되어 개봉 당일/익일 작이 누락되기 때문.
+        if (ts < threeDaysAgo || ts > twoWeeksLater) return false;
+        // 미래 개봉작은 그대로 노출(예매 가능 예정작).
+        // 과거/오늘 개봉작은 메가박스 화이트리스트에 있어야만 통과.
+        if (ts <= now) {
+          return megaTitles.has(normalizeTitleForMatch(item.movieNm));
+        }
+        return true;
       })
       .map((item: { movieCd: string; movieNm: string; openDt?: string; movieNmEn?: string }) => ({
         movieCd: item.movieCd,
