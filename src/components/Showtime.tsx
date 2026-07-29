@@ -1,5 +1,6 @@
 "use client";
 
+import { memo, useMemo } from "react";
 import { VStack, HStack } from "@astryxdesign/core/Stack";
 import { Grid } from "@astryxdesign/core/Grid";
 import { Text } from "@astryxdesign/core/Text";
@@ -7,7 +8,6 @@ import { Token } from "@astryxdesign/core/Token";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { AspectRatio } from "@astryxdesign/core/AspectRatio";
 import { Badge } from "@astryxdesign/core/Badge";
-import { Popover } from "@astryxdesign/core/Popover";
 import type { ApiMovie, ApiShowtime } from "../lib/ui";
 import { isUpcoming, seatStatus, seatBarColor } from "../lib/ui";
 import type { TheaterChain } from "../lib/types";
@@ -199,11 +199,17 @@ export function ShowtimeHeatmap({ groups }: { groups: HeatmapGroup[] }) {
   const allShows = groups.flatMap((g) => g.shows);
   if (allShows.length === 0) return null;
 
-  const startMin = Math.min(...allShows.map((s) => timeToMinutes(s.startTime)));
-  const endMin = Math.max(...allShows.map((s) => timeToMinutes(s.endTime || s.startTime)));
+  const rawStartMin = Math.min(...allShows.map((s) => timeToMinutes(s.startTime)));
+  const rawEndMin = Math.max(...allShows.map((s) => timeToMinutes(s.endTime || s.startTime)));
   // 30분 단위 슬롯
   const slotSize = 30;
-  const totalSlots = Math.ceil((endMin - startMin + 1) / slotSize);
+  // startMin을 슬롯 단위로 내림 정렬.
+  // 그렇지 않으면 startMin이 08:50(530분)일 때 슬롯이 530,560,590...이 되어
+  // 09:00(540) 같은 정시가 슬롯 경계에 안 걸려 시간 라벨이 누락된다.
+  const startMin = Math.floor(rawStartMin / slotSize) * slotSize;
+  // endMin은 올림하여 마지막 회차가 잘리지 않도록.
+  const endMin = Math.ceil((rawEndMin + 1) / slotSize) * slotSize;
+  const totalSlots = Math.ceil((endMin - startMin) / slotSize);
 
   // 시간 라벨 (1시간 간격)
   const hourLabels: { slot: number; label: string }[] = [];
@@ -278,124 +284,175 @@ export function ShowtimeHeatmap({ groups }: { groups: HeatmapGroup[] }) {
 
           {/* 각 영화관 행 */}
           <VStack gap={gap} align="start">
-            {groups.map((group) => {
-              const sortedShows = [...group.shows].sort((a, b) =>
-                a.startTime.localeCompare(b.startTime),
-              );
-              return (
-                <div
-                  key={`${group.chain}-${group.name}`}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    height: cellSize,
-                    gap,
-                  }}
-                >
-                  {/* 영화관명 */}
-                  <div
-                    style={{
-                      width: labelWidth,
-                      flexShrink: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      paddingRight: "var(--spacing-2)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "var(--spacing-1)",
-                    }}
-                  >
-                    <Badge variant={chainColorForHeatmap(group.chain)} label={group.chain} />
-                    <Text size="xsm" maxLines={1} weight="semibold">{group.name}</Text>
-                  </div>
-
-                  {/* 슬롯 셀들 */}
-                  {Array.from({ length: totalSlots }, (_, i) => {
-                    const slotMin = startMin + i * slotSize;
-                    const show = sortedShows.find((s) => {
-                      const sMin = timeToMinutes(s.startTime);
-                      return sMin >= slotMin && sMin < slotMin + slotSize;
-                    });
-                    if (!show) {
-                      return (
-                        <div
-                          key={i}
-                          style={{
-                            width: cellSize,
-                            height: cellSize,
-                            flexShrink: 0,
-                            borderRadius: "var(--radius-1)",
-                            background: "var(--color-background-muted)",
-                          }}
-                        />
-                      );
-                    }
-                    const st = seatStatus(show.remainingSeats, show.totalSeats);
-                    return (
-                      <Popover
-                        key={i}
-                        placement="above"
-                        alignment="center"
-                        hasAutoFocus={false}
-                        content={
-                          <VStack gap={1} padding={3} align="start" width={220}>
-                            <HStack gap={1} align="center" justify="between" width="100%">
-                              <Text weight="semibold" size="lg" hasTabularNumbers>
-                                {show.startTime}
-                              </Text>
-                              <HStack gap={1} align="center">
-                                <StatusDot variant={st.variant} label={st.label} />
-                                <Text type="supporting" size="xsm">{st.label}</Text>
-                              </HStack>
-                            </HStack>
-                            <Text type="supporting" size="xsm" maxLines={2} wordBreak="break-word" textWrap="pretty">
-                              {show.screenName}
-                            </Text>
-                            <Text type="supporting" size="xsm" maxLines={2} wordBreak="break-word" textWrap="pretty">
-                              {show.screenType}
-                            </Text>
-                            <Text type="label" size="xsm" hasTabularNumbers>
-                              {show.remainingSeats}/{show.totalSeats}석
-                            </Text>
-                          </VStack>
-                        }
-                      >
-                        <button
-                          type="button"
-                          aria-label={`${show.startTime} ${st.label}`}
-                          style={{
-                            width: cellSize,
-                            height: cellSize,
-                            flexShrink: 0,
-                            padding: 0,
-                            border: "none",
-                            borderRadius: "var(--radius-1)",
-                            background: seatCellColor(show.remainingSeats, show.totalSeats),
-                            cursor: "pointer",
-                            transition: "transform 0.1s, box-shadow 0.1s",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = "scale(1.4)";
-                            e.currentTarget.style.boxShadow = "var(--shadow-1)";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = "scale(1)";
-                            e.currentTarget.style.boxShadow = "none";
-                          }}
-                        />
-                      </Popover>
-                    );
-                  })}
-                </div>
-              );
-            })}
+            {groups.map((group, idx) => (
+              <HeatmapRow
+                key={`${group.chain}-${group.name}`}
+                group={group}
+                startMin={startMin}
+                totalSlots={totalSlots}
+                slotSize={slotSize}
+                cellSize={cellSize}
+                gap={gap}
+                labelWidth={labelWidth}
+                tooltipBelow={idx === 0}
+              />
+            ))}
           </VStack>
         </div>
       </div>
     </VStack>
   );
 }
+
+interface HeatmapRowProps {
+  group: HeatmapGroup;
+  startMin: number;
+  totalSlots: number;
+  slotSize: number;
+  cellSize: number;
+  gap: number;
+  labelWidth: number;
+  tooltipBelow: boolean;
+}
+
+// 행 단위 메모이제이션: 동일 그룹은 리렌더 스킵.
+const HeatmapRow = memo(function HeatmapRow({
+  group,
+  startMin,
+  totalSlots,
+  slotSize,
+  cellSize,
+  gap,
+  labelWidth,
+  tooltipBelow,
+}: HeatmapRowProps) {
+  // 슬롯 매칭을 Map으로 한 번에 구축 (O(shows)). 슬롯마다 find() 돌리지 않는다.
+  const sortedShows = useMemo(
+    () => [...group.shows].sort((a, b) => a.startTime.localeCompare(b.startTime)),
+    [group.shows],
+  );
+  const slotMap = useMemo(() => {
+    const m = new Map<number, ApiShowtime>();
+    for (const s of sortedShows) {
+      const sMin = timeToMinutes(s.startTime);
+      const slot = Math.floor((sMin - startMin) / slotSize);
+      if (slot >= 0 && slot < totalSlots && !m.has(slot)) m.set(slot, s);
+    }
+    return m;
+  }, [sortedShows, startMin, slotSize, totalSlots]);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        height: cellSize,
+        gap,
+      }}
+    >
+      {/* 영화관명 */}
+      <div
+        style={{
+          width: labelWidth,
+          flexShrink: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          paddingRight: "var(--spacing-2)",
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--spacing-1)",
+        }}
+      >
+        <Badge variant={chainColorForHeatmap(group.chain)} label={group.chain} />
+        <Text size="xsm" maxLines={1} weight="semibold">{group.name}</Text>
+      </div>
+
+      {/* 슬롯 셀들 */}
+      {Array.from({ length: totalSlots }, (_, i) => {
+        const show = slotMap.get(i);
+        if (!show) {
+          return (
+            <div
+              key={i}
+              style={{
+                width: cellSize,
+                height: cellSize,
+                flexShrink: 0,
+                borderRadius: "var(--radius-1)",
+                background: "var(--color-background-muted)",
+              }}
+            />
+          );
+        }
+        const st = seatStatus(show.remainingSeats, show.totalSeats);
+        const tooltip = `${show.startTime} · ${st.label} · ${show.screenType} · ${show.remainingSeats}/${show.totalSeats}석`;
+        return (
+          <span
+            key={i}
+            className="heatmap-cell"
+            style={{ position: "relative", display: "inline-flex" }}
+          >
+            <span
+              role="tooltip"
+              className="heatmap-tooltip"
+              style={{
+                position: "absolute",
+                ...(tooltipBelow
+                  ? { top: "calc(100% + 6px)" }
+                  : { bottom: "calc(100% + 6px)" }),
+                left: "50%",
+                transform: "translateX(-50%)",
+                background: "var(--color-background-surface)",
+                color: "var(--color-text)",
+                border: "var(--spacing-0-5) solid var(--color-border)",
+                borderRadius: "var(--radius-1)",
+                boxShadow: "var(--shadow-2)",
+                padding: "var(--spacing-2) var(--spacing-3)",
+                fontSize: 12,
+                lineHeight: 1.4,
+                whiteSpace: "nowrap",
+                pointerEvents: "none",
+                opacity: 0,
+                transition: "opacity 0.15s ease",
+                zIndex: 100,
+              }}
+            >
+              {tooltip}
+            </span>
+            <button
+              type="button"
+              aria-label={tooltip}
+              style={{
+                width: cellSize,
+                height: cellSize,
+                flexShrink: 0,
+                padding: 0,
+                border: "none",
+                borderRadius: "var(--radius-1)",
+                background: seatCellColor(show.remainingSeats, show.totalSeats),
+                cursor: "pointer",
+                transition: "transform 0.1s, box-shadow 0.1s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "scale(1.4)";
+                e.currentTarget.style.boxShadow = "var(--shadow-1)";
+                const tip = (e.currentTarget.previousElementSibling as HTMLElement);
+                if (tip) tip.style.opacity = "1";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "scale(1)";
+                e.currentTarget.style.boxShadow = "none";
+                const tip = (e.currentTarget.previousElementSibling as HTMLElement);
+                if (tip) tip.style.opacity = "0";
+              }}
+            />
+          </span>
+        );
+      })}
+    </div>
+  );
+});
 
 function chainColorForHeatmap(chain: TheaterChain): "purple" | "blue" | "teal" {
   if (chain === "CGV") return "purple";

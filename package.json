@@ -13,8 +13,8 @@
     "@astryxdesign/cli": "^0.1.9",
     "@astryxdesign/core": "^0.1.9",
     "@astryxdesign/theme-neutral": "^0.1.9",
+    "got-scraping": "^4.2.1",
     "next": "^16.2.12",
-    "playwright": "^1.62.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
