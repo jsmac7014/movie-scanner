@@ -84,6 +84,23 @@ async function fetchBoxOfficeMeta(): Promise<Map<string, BoxOfficeMeta>> {
   });
 }
 
+// KOFIC 박스오피스 movieCd 집합을 "현재 상영" 진실 소스로 사용.
+// 박스오피스는 하루 지연 발표이므로, 오늘/어제 개봉작은 미등록이어도 통과.
+function isActuallyPlaying(
+  movieCd: string,
+  openDt: string,
+  boMeta: Map<string, BoxOfficeMeta>,
+): boolean {
+  if (boMeta.has(movieCd)) return true;
+  // 박스오피스에 없더라도 개봉일이 최근 3일 이내면 신작으로 간주
+  if (openDt) {
+    const ts = kstMidnight(openDt);
+    const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
+    if (ts >= threeDaysAgo) return true;
+  }
+  return false;
+}
+
 // 제목 → movieCd 발굴 캐시 (24시간 — 제목별 첫 발굴 후 재사용)
 const titleToCodeCache = new Map<string, { ts: number; cd: string | null }>();
 const TITLE_CD_TTL = 24 * 60 * 60 * 1000;
@@ -125,11 +142,15 @@ export interface NowPlayingMovie {
  */
 export async function getNowPlayingMovies(): Promise<NowPlayingMovie[]> {
   return memoizeTTL(NOW_PLAYING_KEY, NOW_PLAYING_TTL, async () => {
-    const [mega, lotte, cgv] = await Promise.all([
+    // 각 체인 목록을 독립적으로 호출 — 하나 실패해도 다른 체인으로 동작
+    const [megaR, lotteR, cgvR] = await Promise.allSettled([
       getMegaMovies(),
       getLottePlayingMovies(),
       getCgvPlayingMovies(),
     ]);
+    const mega = megaR.status === "fulfilled" ? megaR.value : [];
+    const lotte = lotteR.status === "fulfilled" ? lotteR.value : [];
+    const cgv = cgvR.status === "fulfilled" ? cgvR.value : [];
 
     // 제목 → chains 추적 (어느 체인에서 상영하는지)
     const titleMap = new Map<string, { title: string; chains: Set<string> }>();
@@ -173,6 +194,11 @@ export async function getNowPlayingMovies(): Promise<NowPlayingMovie[]> {
       const { entry, cd } = moviesWithCd[i];
       const detail = detailResults[i];
       if (!detail) continue;
+
+      // 상영 종료작 제거: KOFIC 박스오피스(최근 7일)에 없고,
+      // 개봉일도 3일 이상 지난 영화는 더 이상 상영하지 않는 것으로 간주.
+      // (롯데 Movies 목록에 종료작이 잔류하는 문제 해결)
+      if (!isActuallyPlaying(cd, detail.openDt, boMeta)) continue;
 
       const bo = boMeta.get(cd);
       result.push({
