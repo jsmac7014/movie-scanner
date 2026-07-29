@@ -193,3 +193,31 @@ export async function crawlCgv(
     remainingSeats: parseInt(s.frSeatCnt, 10) || 0,
   }));
 }
+
+// 강남 대표점(0056) 상영시간표에서 현재 CGV 상영작 제목 추출.
+// CGV는 전체 상영작 목록 API가 없어서 대표점 1곳의 상영시간표를 활용한다.
+let cgvPlayingCache: { ts: number; data: { id: string; title: string }[] } | null = null;
+const CGV_PLAYING_TTL = 5 * 60 * 1000;
+
+export async function getCgvPlayingMovies(): Promise<{ id: string; title: string }[]> {
+  if (cgvPlayingCache && Date.now() - cgvPlayingCache.ts < CGV_PLAYING_TTL) {
+    return cgvPlayingCache.data;
+  }
+  const ymd = dateCompact();
+  const response = await fetchCgvApi(
+    `/searchMovScnInfo?coCd=A420&siteNo=0056&scnYmd=${ymd}&rtctlScopCd=01`,
+  );
+  const showtimes = (response.data || []) as CgvShowtime[];
+  const seen = new Set<string>();
+  const movies: { id: string; title: string }[] = [];
+  for (const s of showtimes) {
+    const title = (s.expoProdNm || s.movNm || s.prodNm || "").trim();
+    if (!title) continue;
+    const key = normalizeMovieTitle(title);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    movies.push({ id: s.movNo || key, title });
+  }
+  cgvPlayingCache = { ts: Date.now(), data: movies };
+  return movies;
+}
