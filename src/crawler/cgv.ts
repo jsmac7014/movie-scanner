@@ -1,12 +1,25 @@
-import { gotScraping } from "got-scraping";
+import got from "got";
 import type { CrawledShowtime, Theater, TheaterChain } from "../lib/types";
 import { dateCompact } from "./dates";
 
 const CHAIN: TheaterChain = "CGV";
 const CGV_API = "https://cgv.co.kr/api/v1/booking";
 
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const BROWSER_HEADERS: Record<string, string> = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  Accept: "application/json, text/plain, */*",
+  "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+  "Accept-Encoding": "gzip, deflate, br",
+  Referer: "https://cgv.co.kr/booking",
+  Origin: "https://cgv.co.kr",
+  "Sec-Ch-Ua": "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\"",
+  "Sec-Ch-Ua-Mobile": "?0",
+  "Sec-Ch-Ua-Platform": "\"macOS\"",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-origin",
+};
 
 interface CgvTheater {
   coCd: string;
@@ -61,16 +74,9 @@ async function fetchCgvApi(path: string): Promise<Record<string, unknown>> {
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const res = await gotScraping({
-        url,
+      const res = await got(url, {
         method: "GET",
-        headers: {
-          "User-Agent": UA,
-          Accept: "application/json, text/plain, */*",
-          "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-          Referer: "https://cgv.co.kr/booking",
-          Origin: "https://cgv.co.kr",
-        },
+        headers: BROWSER_HEADERS,
         timeout: { request: 15000 },
         responseType: "json",
       });
